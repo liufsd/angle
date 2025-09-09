@@ -1,7 +1,7 @@
 name: Build ANGLE for Android
 
 on:
-  workflow_dispatch: # 手动触发
+  workflow_dispatch:
   push:
     branches: [ main ]
 
@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     strategy:
+      fail-fast: false
       matrix:
         abi: [arm64, arm, x64]
 
@@ -49,6 +50,14 @@ jobs:
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
             "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
 
+      - name: Add swap
+        run: |
+          sudo fallocate -l 4G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
       - name: Fetch ANGLE
         run: |
           mkdir -p $GITHUB_WORKSPACE/angle
@@ -76,14 +85,14 @@ jobs:
 
           OUT_DIR=out/Android_${{ matrix.abi }}
           gn gen $OUT_DIR --args="target_os=\"android\" target_cpu=\"$TARGET_CPU\" is_debug=false angle_enable_vulkan=true android_ndk_root=\"$ANDROID_NDK_ROOT\" android_sdk_root=\"$ANDROID_SDK_ROOT\" android_ndk_version=\"26\" android_sdk_version=34"
-          autoninja -C $OUT_DIR libEGL libGLESv2
+          autoninja -C $OUT_DIR -j2 libEGL libGLESv2
 
           mkdir -p artifacts/$ABI_DIR
           cp $OUT_DIR/libEGL_angle.so artifacts/$ABI_DIR/
           cp $OUT_DIR/libGLESv2_angle.so artifacts/$ABI_DIR/
 
       - name: Copy headers
-        if: matrix.abi == 'arm64' # 只需要一次
+        if: matrix.abi == 'arm64'
         run: |
           mkdir -p artifacts/include
           cp -r $GITHUB_WORKSPACE/angle/include/* artifacts/include/
